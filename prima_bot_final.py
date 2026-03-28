@@ -789,7 +789,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── ЗАПУСК ───────────────────────────────────────────────────────────────────
 
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
+
+    async def post_init(application):
+        scheduler.add_job(send_reminder_1,    "date", run_date="2026-04-03 14:00:00", args=[application])
+        scheduler.add_job(send_reminder_2,    "date", run_date="2026-04-03 17:00:00", args=[application])
+        scheduler.add_job(send_post_mk_survey,"date", run_date="2026-04-03 19:00:00", args=[application])
+        scheduler.start()
+
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -809,13 +817,6 @@ def main():
     )
 
     app.add_handler(conv)
-
-    # Планировщик напоминаний — 3 апреля по Астане (UTC+5)
-    scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
-    scheduler.add_job(send_reminder_1,   "date", run_date="2026-04-03 14:00:00", args=[app])
-    scheduler.add_job(send_reminder_2,   "date", run_date="2026-04-03 17:00:00", args=[app])
-    scheduler.add_job(send_post_mk_survey,"date", run_date="2026-04-03 19:00:00", args=[app])
-    scheduler.start()
 
     print("PRIMA Bot запущен. Нажмите Ctrl+C для остановки.")
     app.run_polling()
