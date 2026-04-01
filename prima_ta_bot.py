@@ -93,7 +93,8 @@ MSG = {
     ),
     STEP5_WAIT_NAME: (
         "*Подтверждение согласия*\n\n"
-        "Пожалуйста, введите ваше ФИО — это необходимо для фиксации вашего согласия\\."
+        "Пожалуйста, введите ваше ФИО и ИИН в формате:\n"
+        "_Иван Иванов, 12345678901234_"
     ),
 }
 
@@ -118,7 +119,7 @@ def kb_final() -> InlineKeyboardMarkup:
     ])
 
 # ─── Хранение данных ─────────────────────────────────────────────────────────
-def save_to_sheet(telegram_id: int, username: str, full_name: str) -> None:
+def save_to_sheet(telegram_id: int, username: str, full_name: str, iin: str) -> None:
     """Записывает согласие в Google Sheets."""
     try:
         scopes = [
@@ -131,17 +132,18 @@ def save_to_sheet(telegram_id: int, username: str, full_name: str) -> None:
 
         # Заголовки при первой записи
         if sheet.row_count == 0 or not sheet.cell(1, 1).value:
-            sheet.append_row(["telegram_id", "username", "ФИО", "agreed_at", "steps"])
+            sheet.append_row(["telegram_id", "username", "ФИО", "ИИН", "agreed_at", "steps"])
 
         now = datetime.now(ALMATY_TZ).strftime("%d.%m.%Y %H:%M")
         sheet.append_row([
             str(telegram_id),
             username or "—",
             full_name,
+            iin,
             now,
             "1,2,3,4,5",
         ])
-        logger.info(f"Saved: {telegram_id} | {full_name} | {now}")
+        logger.info(f"Saved: {telegram_id} | {full_name} | {iin} | {now}")
     except Exception as e:
         logger.error(f"Google Sheets error: {e}")
 
@@ -215,19 +217,40 @@ async def step4_to_step5(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получает ФИО и показывает итоговое подтверждение."""
-    name = update.message.text.strip()
-    if len(name) < 3:
+    """Получает ФИО и ИИН и показывает итоговое подтверждение."""
+    text = update.message.text.strip()
+    # Ожидаем формат: "ФИО, ИИН"
+    if "," not in text:
         await update.message.reply_text(
-            "Пожалуйста, введите полное ФИО\\.",
+            "Пожалуйста, введите в формате: _ФИО, ИИН_\n"
+            "Например: _Иван Иванов, 12345678901234_",
+            parse_mode="MarkdownV2",
+        )
+        return STEP5_WAIT_NAME
+
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 2:
+        await update.message.reply_text(
+            "Пожалуйста, введите в формате: _ФИО, ИИН_",
+            parse_mode="MarkdownV2",
+        )
+        return STEP5_WAIT_NAME
+
+    name, iin = parts
+    if len(name) < 3 or len(iin) < 10:
+        await update.message.reply_text(
+            "ФИО должно быть полным, ИИН — минимум 12 символов\.",
             parse_mode="MarkdownV2",
         )
         return STEP5_WAIT_NAME
 
     context.user_data["full_name"] = name
+    context.user_data["iin"] = iin
 
+    iin = context.user_data.get("iin", "—")
     confirm_text = (
         f"Спасибо, *{name}*\\!\n\n"
+        f"ИИН: `{iin}`\n\n"
         "Подтвердите, что вы:\n"
         "— ознакомились со всеми условиями\n"
         "— понимаете их содержание\n"
@@ -262,10 +285,11 @@ async def confirm_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
     user = query.from_user
     full_name = context.user_data.get("full_name", "—")
+    iin = context.user_data.get("iin", "—")
     now = datetime.now(ALMATY_TZ).strftime("%d.%m.%Y %H:%M")
 
     # Сохраняем в Google Sheets
-    save_to_sheet(user.id, user.username, full_name)
+    save_to_sheet(user.id, user.username, full_name, iin)
 
     # Фиксируем в user_data
     context.user_data["agreed"] = True
