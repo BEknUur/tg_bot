@@ -247,7 +247,6 @@ async def receive_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["full_name"] = name
     context.user_data["iin"] = iin
 
-    iin = context.user_data.get("iin", "—")
     confirm_text = (
         f"Спасибо, *{name}*\\!\n\n"
         f"ИИН: `{iin}`\n\n"
