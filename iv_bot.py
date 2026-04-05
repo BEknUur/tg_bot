@@ -27,7 +27,7 @@ load_dotenv()
 
 TELEGRAM_TOKEN   = os.getenv("IV_BOT_TOKEN")
 GOOGLE_SHEET_ID  = os.getenv("IV_SHEET_ID")
-GOOGLE_CREDS     = os.getenv("IV_CREDENTIALS_FILE", "credentials.json")
+GOOGLE_CREDS     = os.getenv("IV_CREDENTIALS_FILE", "iv_credentials.json")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
