@@ -44,12 +44,23 @@ SCOPES = [
 def get_google_sheet():
     """Возвращает объект листа Google Sheets или None при ошибке."""
     try:
-        creds_json = os.getenv("4BOT_CREDS_JSON")
-        sheet_id = os.getenv("4BOT_SHEET_ID")
-        if not creds_json or not sheet_id:
+        creds_source = (
+            os.getenv("4BOT_CREDS_JSON")
+            or os.getenv("GOOGLE_CREDENTIALS_JSON")
+            or os.getenv("GOOGLE_CREDS_JSON")
+        )
+        sheet_id = os.getenv("4BOT_SHEET_ID") or os.getenv("GOOGLE_SHEET_ID")
+        if not creds_source or not sheet_id:
             logger.warning("4BOT_CREDS_JSON или 4BOT_SHEET_ID не заданы — Google Sheets отключён")
             return None
-        creds_data = json.loads(creds_json)
+
+        creds_source = creds_source.strip()
+        if creds_source.startswith("{"):
+            creds_data = json.loads(creds_source)
+        else:
+            with open(creds_source, "r", encoding="utf-8") as credentials_file:
+                creds_data = json.load(credentials_file)
+
         creds = Credentials.from_service_account_info(creds_data, scopes=SCOPES)
         gc = gspread.authorize(creds)
         spreadsheet = gc.open_by_key(sheet_id)
