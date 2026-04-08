@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TELEGRAM_TOKENN = os.getenv("TELEGRAM_TOKENN")
-CLAUDE_API_KEYY = os.getenv("CLAUDE_API_KEYY")
+CLAUDE_API_KEYY = os.getenv("ANTHROPIC_KEY")
 
 # ══════════════════════════════════════════════════════════════════════
 # СИСТЕМНЫЙ ПРОМПТ
