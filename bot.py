@@ -1,12 +1,13 @@
 import logging
 import json
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ConversationHandler, filters, ContextTypes
 )
-from anthropic import Anthropic
+from anthropic import Anthropic, RateLimitError
 import openpyxl
 import os
 import gspread
@@ -27,6 +28,34 @@ NAME, PHONE, CITIZENSHIP, IIN, CONSENT = range(5, 10)
 
 EXCEL_FILE = "students.xlsx"
 client = Anthropic(api_key=CLAUDE_API_KEYY)
+
+MAX_USER_TEXT_CHARS = 2000
+MAX_HISTORY_MESSAGES = 8
+MAX_MESSAGE_CHARS = 1200
+MAX_SYSTEM_PROMPT_CHARS = 1800
+MAX_OUTPUT_TOKENS = 300
+
+
+def clip_text(text: str, max_len: int) -> str:
+    return text if len(text) <= max_len else text[:max_len]
+
+
+async def ask_claude_with_retry(messages: list[dict]):
+    delays = [0, 2, 5]
+    last_error = None
+    for delay in delays:
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            return client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=MAX_OUTPUT_TOKENS,
+                system=clip_text(SYSTEM_PROMPT, MAX_SYSTEM_PROMPT_CHARS),
+                messages=messages,
+            )
+        except RateLimitError as error:
+            last_error = error
+    raise last_error
 
 
 # ─────────────────────────────────────────────
@@ -443,23 +472,37 @@ async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    user_message = update.message.text
+    user_message = clip_text(update.message.text, MAX_USER_TEXT_CHARS)
     history: list = context.user_data.setdefault("history", [])
     history.append({"role": "user", "content": user_message})
+
+    if len(history) > MAX_HISTORY_MESSAGES:
+        history[:] = history[-MAX_HISTORY_MESSAGES:]
+
+    prepared_messages = []
+    for item in history:
+        prepared_messages.append(
+            {
+                "role": item["role"],
+                "content": clip_text(item["content"], MAX_MESSAGE_CHARS),
+            }
+        )
 
     await context.bot.send_chat_action(
         chat_id=update.effective_chat.id, action="typing"
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1000,
-        system=SYSTEM_PROMPT,
-        messages=history
-    )
-    assistant_reply = response.content[0].text
-    history.append({"role": "assistant", "content": assistant_reply})
-    await update.message.reply_text(assistant_reply)
+    try:
+        response = await ask_claude_with_retry(prepared_messages)
+        assistant_reply = response.content[0].text
+        history.append({"role": "assistant", "content": assistant_reply})
+        if len(history) > MAX_HISTORY_MESSAGES:
+            history[:] = history[-MAX_HISTORY_MESSAGES:]
+        await update.message.reply_text(assistant_reply)
+    except RateLimitError:
+        await update.message.reply_text(
+            "Сервис временно перегружен. Попробуйте снова через 30–60 секунд."
+        )
 
 
 # ─────────────────────────────────────────────
