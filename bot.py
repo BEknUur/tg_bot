@@ -44,6 +44,8 @@ INSTRUCTION = """
 ИСТОЧНИКИ ЗНАНИЙ:
 - Ты отвечаешь только на основе материалов, предоставленных в рабочем пространстве
 - Материалы могут включать: презентации, учебные тексты, конспекты лекций, списки литературы, заметки
+- Материалы этого модуля уже загружены в системный контекст ниже (MATERIALS и TRANSCRIPTS)
+- Никогда не проси пользователя загружать материалы повторно, если он не просит добавить новый контент
 - Если информация отсутствует в материалах, отвечай: «Эта информация не указана в материалах данного модуля»
 - Не придумывай названия статей, книг или исследований — ссылайся только на источники из материалов
 
@@ -1558,7 +1560,6 @@ client = Anthropic(api_key=CLAUDE_API_KEYY)
 MAX_USER_TEXT_CHARS = 2000
 MAX_HISTORY_MESSAGES = 8
 MAX_MESSAGE_CHARS = 1200
-MAX_SYSTEM_PROMPT_CHARS = 1800
 MAX_OUTPUT_TOKENS = 300
 
 
@@ -1576,12 +1577,32 @@ async def ask_claude_with_retry(messages: list[dict]):
             return client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=MAX_OUTPUT_TOKENS,
-                system=clip_text(SYSTEM_PROMPT, MAX_SYSTEM_PROMPT_CHARS),
+                system=SYSTEM_PROMPT,
                 messages=messages,
             )
         except RateLimitError as error:
             last_error = error
     raise last_error
+
+
+def log_system_prompt_stats():
+    instruction_len = len(INSTRUCTION.strip())
+    materials_len = len(MATERIALS.strip())
+    transcripts_len = len(TRANSCRIPTS.strip())
+    total_len = len(SYSTEM_PROMPT)
+
+    logger.info(
+        "System prompt stats | instruction=%s, materials=%s, transcripts=%s, total=%s",
+        instruction_len,
+        materials_len,
+        transcripts_len,
+        total_len,
+    )
+
+    if materials_len == 0:
+        logger.warning("MATERIALS пустой: бот не сможет ссылаться на раздаточные материалы")
+    if transcripts_len == 0:
+        logger.warning("TRANSCRIPTS пустой: бот не сможет ссылаться на лекционные транскрипты")
 
 
 # ─────────────────────────────────────────────
@@ -2050,6 +2071,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 
 def main():
+    log_system_prompt_stats()
     app = Application.builder().token(TELEGRAM_TOKENN).build()
 
     conv_handler = ConversationHandler(
